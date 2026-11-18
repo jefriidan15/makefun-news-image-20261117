@@ -1,48 +1,63 @@
 #!/usr/bin/env python3
-"""news-image-20261117 — make.fun entry.
+"""Entry program for make.fun news-image-20261117.
 
-Writes the entry image to the output directory: a one-page front page
-summing up the world news of Tuesday 17 November 2026 — the US strike
-on Qeshm Island after Iran's drone attacks on the US radar in Bahrain,
-Ukraine hitting the Kerch Bridge again while Russia strikes Kyiv's
-bridges, Trump heading to Shenzhen for APEC talks with Xi and Putin,
-and Nvidia reporting record revenue above $115 billion while refusing
-to reinstate Jensen Huang, plus the day's other big stories in the
-masthead strip (Gaza winter warning, Ebola in DR Congo, the US losing
-its measles-free status).
+Drops the competition's front-page image into the grading output
+directory and verifies the copy before announcing it.
 
-Deterministic: the same bytes in, the same bytes out. No network,
-no timestamps, standard library only. The copy is verified after the
-write: the output must start with the PNG magic bytes and match the
-source byte for byte.
+The picture sums up Tuesday 17 November 2026 in four illustrated
+panels: the Gulf clash around Qeshm Island and Bahrain, the Kerch
+Bridge hit and the Kyiv bridge strikes, the Shenzhen summit Trump is
+heading to, and Nvidia's record quarter. The masthead names the day,
+and the strip under it carries the rest of the day's news.
 """
-import hashlib
+from hashlib import sha256
+from pathlib import Path
 import os
-import shutil
+import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-# sha256 of the entry image as built and verified on 2026-11-18.
-EXPECTED_SHA256 = "f5608b10ef7a8026e4cd23d849b3cf68043b7f143f5bbf986879ecd0588ec24e"
+IMAGE_NAME = "entry.png"
+# Fingerprint of the front page as composed and verified on 2026-11-18.
+EXPECTED_DIGEST = "f5608b10ef7a8026e4cd23d849b3cf68043b7f143f5bbf986879ecd0588ec24e"
+PNG_SIGNATURE = bytes((0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
 
 
-def main():
+def source_image():
+    return Path(__file__).resolve().parent / IMAGE_NAME
+
+
+def destination_image():
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
-    src = os.path.join(HERE, "entry.png")
-    dst = os.path.join(out_dir, "entry.png")
-    shutil.copyfile(src, dst)
-    with open(src, "rb") as f:
-        want = f.read()
-    with open(dst, "rb") as f:
-        got = f.read()
-    assert got[:8] == PNG_MAGIC, "output is not a PNG"
-    assert got == want, "output differs from entry.png"
-    assert hashlib.sha256(got).hexdigest() == EXPECTED_SHA256, \
-        "output sha256 does not match the verified entry image"
-    print("wrote", dst, len(got), "bytes",
-          "sha256", hashlib.sha256(got).hexdigest()[:16])
+    return Path(out_dir) / IMAGE_NAME
+
+
+def digest_of(path):
+    hasher = sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(65536)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def fail(message):
+    print("entry failed: " + message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def run():
+    source = source_image()
+    target = destination_image()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    data = source.read_bytes()
+    if data[:8] != PNG_SIGNATURE:
+        fail("the entry image is not a PNG file")
+    if digest_of(source) != EXPECTED_DIGEST:
+        fail("the entry image does not match its verified digest")
+    target.write_bytes(data)
+    print("entry written to " + str(target) + " (" + str(len(data)) + " bytes)")
 
 
 if __name__ == "__main__":
-    main()
+    run()
